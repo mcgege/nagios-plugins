@@ -1,0 +1,141 @@
+#!/usr/bin/perl -w
+#
+# check_qnap_temp  v1.2, 04.06.2014
+# (c) Michael Geiger, info@mgeiger.de
+# updates on http://www.mgeiger.de/downloads.html
+#
+# nagios plugin that verifies the cpu/system temperature
+# of a QNAP NAS (tested on a TS-259 Pro+, firmware 3.8.4)
+#
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+use 5.006;
+use strict;
+use Nagios::Plugin 0.36;
+use Nagios::Plugin::Getopt;
+use SNMP 5.0701;
+
+use constant VERSION => "1.2";
+use constant QTREE =>".1.3.6.1.4.1.24681.1.2.";
+
+my ($np,$sess,$erg,$cpu,$sys,$str);
+
+
+# check SNMP error code
+sub chk_err {
+	my $txt = shift;
+
+	if ($sess->{ErrorNum} != 0) {
+		$np->nagios_die ("$txt: " . $sess->{ErrorStr});
+	}
+}
+
+
+### MAIN ###
+$np = Nagios::Plugin->new(
+	usage		=> "Usage: %s -H <host> -w <warning-temp> -c <critical-temp> [-t timeout]",
+	shortname	=> "QNAP Temperature",
+	version		=> VERSION,
+	timeout		=> 5,
+	url		=> "http://www.mgeiger.de/downloads.html",
+	blurb		=> "This plugin sends SNMP queries to a QNAP NAS and verifies the cpu and system temperature.",
+);
+
+# plugin arguments
+$np->add_arg(
+	spec		=> "host|H=s",
+	help		=> "ip address or hostname of the qnap device",
+	required	=> 1,
+);
+
+$np->add_arg(
+	spec		=> "warning|w=i",
+	help		=> "temperature in celsius, when a WARNING is returned",
+	required	=> 1,
+);
+
+$np->add_arg(
+	spec		=> "critical|c=i",
+	help		=> "temperature in celsius, when a CRITICAL is returned",
+	required	=> 1,
+);
+
+$np->getopts;
+
+
+# setup SNMP session
+$sess = new SNMP::Session(
+	DestHost	=> $np->opts->host,
+	Community	=> "public",
+	Version		=> 2,
+	Timeout		=> $np->opts->timeout * 1000000,
+	Retries		=> 2,
+);
+if (! defined($sess)) {
+	$np->nagios_die ("SNMP Session Setup");
+}
+chk_err("Session Setup");
+
+
+# query cpu temperature (not on all models!)
+$erg = $sess->get(QTREE . "5.0");
+chk_err("Get CPU-Temp");
+if ($erg =~ /^(\d+) C/) {
+	$cpu = $1;
+} else {
+	#$np->nagios_die ("CPU Value: " . $erg);
+	$cpu = 0;
+}
+
+# query system temperature
+$erg = $sess->get(QTREE . "6.0");
+chk_err("Get System-Temp");
+if ($erg =~ /^(\d+) C/) {
+	$sys = $1;
+} else {
+	$np->nagios_die ("System Value: " . $erg);
+}
+
+
+# add performance data
+if ($cpu > 0) {
+	$np->add_perfdata(
+		label		=> "CPU Temp",
+		value		=> $cpu,
+		warning		=> $np->opts->warning,
+		critical	=> $np->opts->critical,
+	);
+	$str = "CPU: " . $cpu . "C, ";
+}
+
+$np->add_perfdata(
+	label		=> "System Temp",
+	value		=> $sys,
+	warning		=> $np->opts->warning,
+	critical	=> $np->opts->critical,
+);
+$str .= "System: " . $sys . "C";
+
+
+# Exit
+if (($cpu >= $np->opts->critical) || ($sys >= $np->opts->critical)) {
+	$np->nagios_exit(CRITICAL, $str);
+}
+if (($cpu >= $np->opts->warning) || ($sys >= $np->opts->warning)) {
+	$np->nagios_exit(WARNING, $str);
+}
+$np->nagios_exit(OK, $str);
+
