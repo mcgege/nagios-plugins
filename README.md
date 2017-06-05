@@ -2,9 +2,22 @@
 
 A collection of check plugins for Nagios, check_mk ...
 
-## Classic Nagios plugins (/nagios-classic/)
 
-*These checks can be used with check_mk via "Host & Service Parameters" -> Active checks -> Classical active and passive Monitoring checks*
+## check_mk local agent plugins (/check_mk-local/)
+
+### Prerequisites
+
+- Perl Interpreter
+- `nut_ups` :: Configured [Network UPS Tools](http://www.networkupstools.org)
+
+### Installation
+
+Copy the file(s) to your local agent plugin directory, e.g. `/usr/lib/check_mk_agent/local`
+
+Some settings can be configured in the plugin files (section SETTINGS).
+
+
+## Classic Nagios plugins (/nagios-classic/)
 
 ### Prerequisites
 
@@ -21,6 +34,7 @@ Copy the scripts into your favourite directory and try them out by calling the s
 
 For the integration in your monitoring system read the corresponding manuals.
 
+*These checks can be used with check_mk via "Host & Service Parameters" -> Active checks -> Classical active and passive Monitoring checks*
 
 ### Usage
 

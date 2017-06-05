@@ -1,0 +1,282 @@
+#!/usr/bin/perl -w
+#
+# nut_ups  v1.0, 05.06.2017
+# (c) Michael Geiger, info@mgeiger.de
+# updates on http://www.mgeiger.de/downloads.html
+#
+# check_mk local agent plugin
+# Outputs data from Network UPS Tools (NUT)
+#
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+use strict;
+my ($allups, $ups, $infos, $info, %vals, $upsinfo, $upsstat, $upstxt);
+
+
+### SETTINGS ###
+my $load_warn = 70;
+my $load_crit = 90;
+
+
+### CONSTANTS ###
+use constant STOK     => 0;
+use constant STWARN   => 1;
+use constant STCRIT   => 2;
+use constant STUNKN   => 3;
+use constant ISLOWER  => 0;
+use constant ISLARGER => 1;
+
+
+### FUNCTIONS ###
+# Add Text Block
+sub addtxt {
+	my $ptr = shift;
+	my $txt = shift;
+
+	if ($$ptr ne "") {
+		$$ptr .= ", " . $txt;
+	} else {
+		$$ptr = $txt;
+	}
+}
+
+
+# Status Text
+sub sttxt {
+	my $status = shift;
+
+	if ($status == STOK) {
+		return("OK");
+	} elsif ($status == STWARN) {
+		return("WARNING");
+	} elsif ($status == STCRIT) {
+		return("CRITICAL");
+	} else {
+		return("UNKNOWN");
+	}
+}
+
+
+# Output Text
+sub output_t {
+	my $status = shift;
+	my $item = shift;
+	my $txt = shift;
+
+	printf("%d %s - %s - %s\n",
+	       $status,
+	       "nut_" . $item,
+	       sttxt($status),
+	       $txt);
+}
+
+
+# Output Value
+sub output_v {
+	my $status = shift;
+	my $item = shift;
+	my $perfval = shift;
+	my $perfdata = shift;
+	my $txt = shift;
+
+	printf("%d %s %s %s - %s\n",
+	       $status,
+	       "nut_" . $item,
+	       $perfdata . "=" . $perfval,
+	       sttxt($status),
+	       $txt);
+}
+
+
+# Output Value with warn/crit
+sub output_wc {
+	my $chktype = shift;
+	my $item = shift;
+	my $perfval = shift;
+	my $perfwarn = shift;
+	my $perfcrit = shift;
+	my $perfdata = shift;
+	my $txt = shift;
+
+	my $status = STOK;
+
+	if ($chktype == ISLARGER) {
+		if ($perfval >= $perfcrit) {
+			$status = STCRIT;
+		} elsif ($perfval >= $perfwarn) {
+			$status = STWARN;
+		}
+	} else {
+		if ($perfval <= $perfcrit) {
+			$status = STCRIT;
+		} elsif ($perfval <= $perfwarn) {
+			$status = STWARN;
+		}
+	}
+
+	printf("%d %s %s %s - %s\n",
+	       $status,
+	       "nut_" . $item,
+	       $perfdata . "=" . $perfval . ";" . $perfwarn . ";" . $perfcrit,
+	       sttxt($status),
+	       $txt);
+}
+
+
+
+### MAIN ###
+$allups = `upsc -l 2>&1`;
+if ($?) { exit(0); }
+
+# Loop through upses
+chop($allups);
+foreach $ups (split(/ +/,$allups)) {
+
+	# Get ups info
+	$infos = `upsc $ups 2>&1`;
+	if ($?) { next; }
+
+	# Parse infos
+	foreach $info (split(/\n/,$infos)) {
+		if ($info =~ /^(.+): +(.+)$/) {
+			$vals{$1} = $2;
+			$vals{$1} =~ s/ +$//;
+		}
+	}
+
+	# Generate debug output
+	#foreach $val (sort(keys(%vals))) {
+	#	print ("<$val> = <$vals{$val}>\n");
+	#}
+
+	# Battery Charge
+	if (defined($vals{"battery.charge"})) {
+		if (defined($vals{"battery.charge.low"}) && defined($vals{"battery.charge.warning"})) {
+			output_wc(ISLOWER, $ups . "_Battery_Charge",
+				  $vals{"battery.charge"},
+				  $vals{"battery.charge.warning"},
+				  $vals{"battery.charge.low"},
+				  "charge",
+				  sprintf("Current Charge: %d%%, Warning: %d%%, Critical: %d%%",
+				  	  $vals{"battery.charge"},
+				  	  $vals{"battery.charge.warning"},
+				  	  $vals{"battery.charge.low"}));
+		} else {
+			output_v(STOK, $ups . "_Battery_Charge",
+				 $vals{"battery.charge"},
+				 "charge",
+				 sprintf("Current Charge: %d%%", $vals{"battery.charge"}));
+		}
+	}
+
+	# Battery Manufacturing Date
+	if (defined($vals{"battery.mfr.date"})) {
+		output_t(STOK, $ups . "_Battery_Date", "Manufacturing Date: " . $vals{"battery.mfr.date"});
+	}
+
+	# Battery Runtime
+	if (defined($vals{"battery.runtime"})) {
+		if (defined($vals{"battery.runtime.low"})) {
+			output_wc(ISLOWER, $ups . "_Battery_Runtime",
+				  $vals{"battery.runtime"},
+				  $vals{"battery.runtime.low"},
+				  $vals{"battery.runtime.low"},
+				  "runtime",
+				  sprintf("Remaining Runtime: %ds, Critical: %ds",
+				  	  $vals{"battery.runtime"},
+				  	  $vals{"battery.runtime.low"}));
+		} else {
+			output_v(STOK, $ups . "_Battery_Runtime",
+				 $vals{"battery.runtime"},
+				 "runtime",
+				 sprintf("Remaining Runtime: %ds", $vals{"battery.runtime"}));
+		}
+	}
+
+	# Battery Voltage
+	if (defined($vals{"battery.voltage"})) {
+		if (defined($vals{"battery.voltage.nominal"})) {
+			output_wc(ISLOWER, $ups . "_Battery_Voltage",
+				  $vals{"battery.voltage"},
+				  $vals{"battery.voltage.nominal"},
+				  0,
+				  "bat_voltage",
+				  sprintf("Current Battery Voltage: %sV, Nominal: %sV",
+				  	  $vals{"battery.voltage"},
+				  	  $vals{"battery.voltage.nominal"}));
+		} else {
+			output_v(STOK, $ups . "_Battery_Voltage",
+				 $vals{"battery.voltage"},
+				 "bat_voltage",
+				 sprintf("Current Battery Voltage: %sV", $vals{"battery.voltage"}));
+		}
+	}
+
+	# Input Voltage
+	if (defined($vals{"input.voltage"})) {
+		if (defined($vals{"input.voltage.nominal"})) {
+			output_wc(ISLOWER, $ups . "_Input_Voltage",
+				  $vals{"input.voltage"},
+				  $vals{"input.voltage.nominal"},
+				  0,
+				  "in_voltage",
+				  sprintf("Current Input Voltage: %sV, Nominal: %sV",
+				  	  $vals{"input.voltage"},
+				  	  $vals{"input.voltage.nominal"}));
+		} else {
+			output_v(STOK, $ups . "_Input_Voltage",
+				 $vals{"input.voltage"},
+				 "in_voltage",
+				 sprintf("Current Input Voltage: %sV", $vals{"input.voltage"}));
+		}
+	}
+
+	# UPS Load
+	if (defined($vals{"ups.load"})) {
+		output_wc(ISLARGER, $ups . "_UPS_Load",
+			  $vals{"ups.load"},
+			  $load_warn,
+			  $load_crit,
+			  "load",
+			  sprintf("UPS Load: %d%%, Warning: %d%%, Critical: %d%%",
+			  	  $vals{"ups.load"},
+				  $load_warn,
+				  $load_crit));
+	}
+
+	# UPS Info
+	$upsinfo = "";
+	if (defined($vals{"ups.mfr"})) { addtxt(\$upsinfo, "Manufacturer: " . $vals{"ups.mfr"}); }
+	if (defined($vals{"ups.model"})) { addtxt(\$upsinfo, "Model: " . $vals{"ups.model"}); }
+	if (defined($vals{"ups.serial"})) { addtxt(\$upsinfo, "Serial: " . $vals{"ups.serial"}); }
+	if (defined($vals{"ups.mfr.date"})) { addtxt(\$upsinfo, "Manufacturing Date: " . $vals{"ups.mfr.date"}); }
+	if ($upsinfo ne "") { output_t(STOK, $ups . "_UPS_Info", $upsinfo); }
+
+	# UPS Status
+	if (defined($vals{"ups.status"})) {
+		$upsstat = STUNKN;
+		$upstxt = "Unknown";
+		if ($vals{"ups.status"} eq "OL") { $upsstat = STOK; $upstxt = "On line"; }
+		elsif ($vals{"ups.status"} eq "OB") { $upsstat = STWARN; $upstxt = "On battery"; }
+		elsif ($vals{"ups.status"} eq "LB") { $upsstat = STCRIT; $upstxt = "Low battery"; }
+		elsif ($vals{"ups.status"} eq "SD") { $upsstat = STCRIT; $upstxt = "Shutdown load"; }
+		if ($vals{"ups.status"} =~ /^-/) {
+			$upsstat = STCRIT;
+		}
+		output_t($upsstat, $ups . "_UPS_Status", "$upstxt (" . $vals{"ups.status"} . ")");
+	}
+
+}
+
