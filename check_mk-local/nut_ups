@@ -26,6 +26,8 @@ my ($allups, $ups, $infos, $info, %vals, $upsinfo, $upsstat, $upstxt);
 
 
 ### SETTINGS ###
+my $input_range_warn = 3;
+my $input_range_crit = 5;
 my $load_warn = 70;
 my $load_crit = 90;
 
@@ -135,6 +137,32 @@ sub output_wc {
 }
 
 
+# Output Value with warn/crit (compare to baseline)
+sub output_wcbs {
+	my $item = shift;
+	my $perfval = shift;
+	my $perfbase = shift;
+	my $perfwarn = shift;
+	my $perfcrit = shift;
+	my $perfdata = shift;
+	my $txt = shift;
+
+	my $status = STOK;
+
+	if (($perfval >= $perfbase + $perfcrit) || ($perfval <= $perfbase - $perfcrit)) {
+		$status = STCRIT;
+	} elsif (($perfval >= $perfbase + $perfwarn) || ($perfval <= $perfbase - $perfwarn)) {
+		$status = STWARN;
+	}
+
+	printf("%d %s %s %s - %s\n",
+	       $status,
+	       "nut_" . $item,
+	       $perfdata . "=" . $perfval . ";" . ($perfbase + $perfwarn) . ";" . ($perfbase + $perfcrit),
+	       sttxt($status),
+	       $txt);
+}
+
 
 ### MAIN ###
 $allups = `upsc -l 2>&1`;
@@ -227,14 +255,17 @@ foreach $ups (split(/ +/,$allups)) {
 	# Input Voltage
 	if (defined($vals{"input.voltage"})) {
 		if (defined($vals{"input.voltage.nominal"})) {
-			output_wc(ISLOWER, $ups . "_Input_Voltage",
-				  $vals{"input.voltage"},
-				  $vals{"input.voltage.nominal"},
-				  0,
-				  "in_voltage",
-				  sprintf("Current Input Voltage: %sV, Nominal: %sV",
-				  	  $vals{"input.voltage"},
-				  	  $vals{"input.voltage.nominal"}));
+			output_wcbs($ups . "_Input_Voltage",
+				    $vals{"input.voltage"},
+				    $vals{"input.voltage.nominal"},
+				    $input_range_warn,
+				    $input_range_crit,
+				    "in_voltage",
+				    sprintf("Current Input Voltage: %sV, Nominal: %sV, Warning: +-%sV, Critical: +-%sV",
+				  	    $vals{"input.voltage"},
+				  	    $vals{"input.voltage.nominal"},
+					    $input_range_warn,
+					    $input_range_crit));
 		} else {
 			output_v(STOK, $ups . "_Input_Voltage",
 				 $vals{"input.voltage"},
