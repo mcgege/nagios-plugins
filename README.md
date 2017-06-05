@@ -1,15 +1,18 @@
 # nagios-plugins
 
-A collection of (a bit outdated) check plugins for Nagios, check_mk ...
+A collection of check plugins for Nagios, check_mk ...
 
+## Classic Nagios plugins (/nagios-classic/)
 
-## Prerequisites
+*These checks can be used with check_mk via "Host & Service Parameters" -> Active checks -> Classical active and passive Monitoring checks*
+
+### Prerequisites
 
 - Perl Interpreter
 - Nagios::Plugin and other Perl modules (install via packet manager or CPAN)
 
 
-## Installation
+### Installation
 
 Copy the scripts into your favourite directory and try them out by calling the script directly from command line, e.g.
 
@@ -19,9 +22,9 @@ Copy the scripts into your favourite directory and try them out by calling the s
 For the integration in your monitoring system read the corresponding manuals.
 
 
-## Usage
+### Usage
 
-### QNAP NAS Plugins
+#### QNAP NAS Plugins
 
 - `check_qnap_hdd -H <host> -w <warning-temp> -c <critical-temp> [-t <timeout>]` :: Check harddisk temperature
 - `check_qnap_temp -H <host> -w <warning-temp> -c <critical-temp> [-t timeout]` :: Check system temperature
