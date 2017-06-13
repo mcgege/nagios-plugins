@@ -26,8 +26,8 @@ my ($allups, $ups, $infos, $info, %vals, $upsinfo, $upsstat, $upstxt);
 
 
 ### SETTINGS ###
-my $input_range_warn = 3;
-my $input_range_crit = 5;
+my $input_range_warn = 7;
+my $input_range_crit = 12;
 my $load_warn = 70;
 my $load_crit = 90;
 
