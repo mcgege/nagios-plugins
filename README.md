@@ -40,7 +40,7 @@ For the integration in your monitoring system read the corresponding manuals.
 
 #### Travis CI Plugin
 
-- `check_travis_status` -r <repository-user/-name> [-t timeout]` :: Check Travis CI build status for repository
+- `check_travis_status -r <repository-user/-name> [-t timeout]` :: Check Travis CI build status for repository
 
 Repository format: `user/name` (e.g. `dev-sec/puppet-os-hardening`)
 
