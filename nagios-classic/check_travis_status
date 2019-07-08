@@ -1,0 +1,97 @@
+#!/usr/bin/perl -w
+#
+# check_travis_status  v1.0, 08.07.2019
+# (c) Michael Geiger, info@mgeiger.de
+# updates on http://www.mgeiger.de/downloads.html
+#
+# nagios plugin that checks the build status on Travis CI
+#
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+use strict;
+use Monitoring::Plugin;
+use LWP::UserAgent();
+
+use constant VERSION => "1.0";
+
+my ($np,$repo,$url,$ua,$res);
+
+
+
+sub info {
+    my $txt = shift;
+
+    if ($np->opts->verbose) {
+        print("DEBUG: $txt\n");
+    }
+}
+
+
+### MAIN ###
+$np = Monitoring::Plugin->new(
+    usage       => "Usage: %s -r <repository-user/-name> [-t timeout] [-v]",
+    shortname   => "Travis-CI Status",
+    version     => VERSION,
+    timeout     => 5,
+    url         => "http://www.mgeiger.de/downloads.html",
+    blurb       => "This plugin checks the latest build status on Travis CI.",
+);
+
+# plugin arguments
+$np->add_arg(
+    spec        => "repository|r=s",
+    help        => "repository user / name  (e.g. 'dev-sec/puppet-os-hardening')",
+    required    => 1,
+);
+
+$np->getopts;
+
+
+# set HTTP session
+$repo = $np->opts->repository;
+$repo =~ s/^\/+//;
+$repo =~ s/\/+$//;
+$url = "https://api.travis-ci.org/repos/${repo}.svg";
+info("GET Request: $url");
+
+$ua = LWP::UserAgent->new(
+    timeout => $np->opts->timeout,
+    agent   => 'check_travis_status',
+);
+
+$res = $ua->get(
+    $url,
+    'Accept'    => 'application/vnd.travis-ci.2.1+json',
+);
+
+
+# Result
+if (!$res->is_success) {
+    $np->plugin_exit(UNKNOWN,"API access failed: " . $res->status_line);
+}
+
+if ($res->decoded_content =~ />([a-z]+)<\/text><\/g>/) {
+    if ($1 eq "passing") {
+        $np->plugin_exit(OK,"Travis Build is green");
+    } elsif ($1 eq "failing") {
+        $np->plugin_exit(CRITICAL,"Travis Build is red");
+    } else {
+        $np->plugin_exit(UNKNOWN,"Unknown build status: $1");
+    }
+}
+
+$np->plugin_exit(UNKNOWN,"Unknown API response");
+

@@ -22,7 +22,7 @@ Some settings can be configured in the plugin files (section SETTINGS).
 ### Prerequisites
 
 - Perl Interpreter
-- Nagios::Plugin and other Perl modules (install via packet manager or CPAN)
+- Monitoring::Plugin / Nagios::Plugin and other Perl modules (install via packet manager or CPAN)
 
 
 ### Installation
@@ -38,11 +38,17 @@ For the integration in your monitoring system read the corresponding manuals.
 
 ### Usage
 
+#### Travis CI Plugin
+
+- `check_travis_status` -r <repository-user/-name> [-t timeout]` :: Check Travis CI build status for repository
+
+Repository format: `user/name` (e.g. `dev-sec/puppet-os-hardening`)
+
 #### QNAP NAS Plugins
 
-- `check_qnap_hdd -H <host> -w <warning-temp> -c <critical-temp> [-t <timeout>]` :: Check harddisk temperature
+- `check_qnap_hdd -H <host> -w <warning-temp> -c <critical-temp> [-t timeout]` :: Check harddisk temperature
 - `check_qnap_temp -H <host> -w <warning-temp> -c <critical-temp> [-t timeout]` :: Check system temperature
-- `check_qnap_volumes -H <host> -w <warning free space%> -c <critical free space%> [-t <timeout>]` :: Check free space on volume
+- `check_qnap_volumes -H <host> -w <warning free space%> -c <critical free space%> [-t timeout]` :: Check free space on volume
 
 
 ## License and Author
