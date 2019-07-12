@@ -2,7 +2,7 @@
 #
 # check_travis_status  v1.0, 08.07.2019
 # (c) Michael Geiger, info@mgeiger.de
-# updates on http://www.mgeiger.de/downloads.html
+# updates on https://www.mgeiger.de/downloads.html
 #
 # nagios plugin that checks the build status on Travis CI
 #
@@ -46,7 +46,7 @@ $np = Monitoring::Plugin->new(
     shortname   => "Travis-CI Status",
     version     => VERSION,
     timeout     => 5,
-    url         => "http://www.mgeiger.de/downloads.html",
+    url         => "https://www.mgeiger.de/downloads.html",
     blurb       => "This plugin checks the latest build status on Travis CI.",
 );
 
