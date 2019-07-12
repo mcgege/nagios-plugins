@@ -1,0 +1,183 @@
+#!/usr/bin/perl -w
+#
+# check_fritzbox  v2.1, 12.07.2019
+# (c) Michael Geiger, info@mgeiger.de
+# updates on https://www.mgeiger.de/downloads.html
+#
+# nagios plugin that checks the state of the dsl uplink
+# on an AVM FritzBox (tested on a FritzBox 7390, FRITZ!OS 06.20)
+# traffic in/out is returned via performance counter
+#
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+use strict;
+use Monitoring::Plugin;
+use Monitoring::Plugin::Getopt;
+use LWP::UserAgent;
+use HTTP::Request;
+use HTTP::Headers;
+use XML::Simple;
+use Digest::MD5 qw(md5_hex);
+#use Data::Dumper;
+
+use constant VERSION => "2.1";
+
+my ($np,$ua,$res,$xml,$nonce,$realm,$secret,$response,$authd,$sent,$received);
+
+
+
+# Mit Fehler beenden
+sub fehler {
+    my $txt = shift;
+    $np->nagios_die ("Error! $txt\n");
+}
+
+
+# SOAP-Request bauen und abschicken
+sub soap_req {
+    my $url = shift;
+    my $uri = shift;
+    my $header = shift;
+    my $body = shift;
+
+    my $hd = HTTP::Headers->new(
+        SOAPACTION  => '"' . $uri . '"',
+    );
+    my $req = HTTP::Request->new(
+        POST    => "http://" . $np->opts->host . ":49000" . $url,
+        $hd,
+    );
+    $req->content_type('text/xml; charset="utf-8"');
+    $req->content('<?xml version="1.0" encoding="utf-8"?><s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Header>' . $header . '</s:Header><s:Body>' . $body . '</s:Body></s:Envelope>');
+    my $erg = $ua->request($req);
+    if ($erg->is_success) {
+        return $erg;
+    } else {
+        fehler ("soap_req: " . $erg->message . " (" . $erg->code . ")\nurl: $url\nuri: $uri\nheader: $header\nbody: $body");
+    }
+}
+
+
+
+### MAIN ###
+$np = Monitoring::Plugin->new(
+    usage       => "Usage: %s -H <host> -p <password> [ -u <user> ]",
+    shortname   => "FritzBox",
+    version     => VERSION,
+    url         => "https://www.mgeiger.de/downloads.html",
+    blurb       => "This plugin queries the dsl state of an AVM FritzBox via uPNP\n" .
+               "and returns the traffic in/out as performance counter.",
+);
+
+# plugin arguments
+$np->add_arg(
+    spec        => "host|H=s",
+    help        => "ip address or hostname of the fritzbox",
+    required    => 1,
+);
+$np->add_arg(
+    spec        => "password|p=s",
+    help        => "password for FritzBox access",
+    required    => 1,
+);
+$np->add_arg(
+    spec        => "user|u=s",
+    help        => "user for FritzBox access (default: admin)",
+    default     => "admin",
+);
+
+$np->getopts;
+
+
+# Client Authentication
+$ua = LWP::UserAgent->new;
+$res = soap_req(
+    '/upnp/control/wancommonifconfig1',
+    'urn:dslforum-org:service:WANCommonInterfaceConfig:1#GetCommonLinkProperties',
+    '<h:InitChallenge xmlns:h="http://soap-authentication.org/digest/2001/10/" s:mustUnderstand="1">
+    <UserID>' . $np->opts->user . '</UserID>
+    </h:InitChallenge>',
+    '<u:GetCommonLinkProperties xmlns:u="urn:dslforum-org:service:WANCommonInterfaceConfig:1"></u:GetCommonLinkProperties>'
+);
+$xml = XMLin($res->content);
+#print Dumper($xml);
+$nonce = $xml->{'s:Header'}->{'h:Challenge'}->{'Nonce'};
+$realm = $xml->{'s:Header'}->{'h:Challenge'}->{'Realm'};
+$secret = md5_hex($np->opts->user . ":" . $realm . ":" . $np->opts->password);
+$response = md5_hex($secret . ":" . $nonce);
+$authd = '<h:ClientAuth xmlns:h="http://soap-authentication.org/digest/2001/10/" s:mustUnderstand="1">
+    <Nonce>' . $nonce . '</Nonce>
+    <Auth>' . $response . '</Auth>
+    <UserID>' . $np->opts->user . '</UserID>
+    <Realm>' . $realm . '</Realm>
+    </h:ClientAuth>';
+
+# SOAP Call "Interface Status"
+$res = soap_req(
+    '/upnp/control/wancommonifconfig1',
+    'urn:dslforum-org:service:WANCommonInterfaceConfig:1#GetCommonLinkProperties',
+    $authd,
+    '<u:GetCommonLinkProperties xmlns:u="urn:dslforum-org:service:WANCommonInterfaceConfig:1"></u:GetCommonLinkProperties>'
+);
+$xml = XMLin($res->content);
+#print Dumper($xml);
+if ($xml->{'s:Header'}->{'h:NextChallenge'}->{'Status'} ne 'Authenticated') {
+    fehler ("Authentication error");
+}
+if ($xml->{'s:Body'}->{'u:GetCommonLinkPropertiesResponse'}->{'NewPhysicalLinkStatus'} !~ /^up$/i) {
+    $np->nagios_exit(CRITICAL, "DSL is down");
+}
+
+# SOAP Call "Bytes Sent"
+$res = soap_req(
+    '/upnp/control/wancommonifconfig1',
+    'urn:dslforum-org:service:WANCommonInterfaceConfig:1#GetTotalBytesSent',
+    $authd,
+    '<u:GetTotalBytesSent xmlns:u="urn:dslforum-org:service:WANCommonInterfaceConfig:1"></u:GetTotalBytesSent>'
+);
+$xml = XMLin($res->content);
+#print Dumper($xml);
+$sent = $xml->{'s:Body'}->{'u:GetTotalBytesSentResponse'}->{'NewTotalBytesSent'};
+
+# SOAP Call "Bytes Received"
+$res = soap_req(
+    '/upnp/control/wancommonifconfig1',
+    'urn:dslforum-org:service:WANCommonInterfaceConfig:1#GetTotalBytesReceived',
+    $authd,
+    '<u:GetTotalBytesReceived xmlns:u="urn:dslforum-org:service:WANCommonInterfaceConfig:1"></u:GetTotalBytesReceived>'
+);
+$xml = XMLin($res->content);
+#print Dumper($xml);
+$received = $xml->{'s:Body'}->{'u:GetTotalBytesReceivedResponse'}->{'NewTotalBytesReceived'};
+
+
+# add performance data
+$np->add_perfdata(
+    label   => "In",
+    value   => $received,
+    uom => "c",
+);
+
+$np->add_perfdata(
+    label   => "Out",
+    value   => $sent,
+    uom => "c",
+);
+
+
+# normal exit
+$np->nagios_exit(OK, "DSL is up");
+
