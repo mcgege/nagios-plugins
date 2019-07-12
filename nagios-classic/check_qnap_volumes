@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 #
-# check_qnap_volumes  v1.2, 04.06.2014
+# check_qnap_volumes  v1.3, 12.07.2019
 # (c) Michael Geiger, info@mgeiger.de
-# updates on http://www.mgeiger.de/downloads.html
+# updates on https://www.mgeiger.de/downloads.html
 #
 # nagios plugin that verifies the volumes (state, free space)
 # of a QNAP NAS (tested on a TS-259 Pro+, firmware 3.8.4)
@@ -22,13 +22,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-use 5.006;
 use strict;
-use Nagios::Plugin 0.36;
-use Nagios::Plugin::Getopt;
-use SNMP 5.0701;
+use Monitoring::Plugin;
+use Monitoring::Plugin::Getopt;
+use SNMP;
 
-use constant VERSION => "1.2";
+use constant VERSION => "1.3";
 use constant QTREE =>".1.3.6.1.4.1.24681.1.2.";
 
 my ($np,$sess,$anz,@tab,$statc,$statw,$txt,$a,$x,$warn,$crit,$free,$size);
@@ -36,91 +35,91 @@ my ($np,$sess,$anz,@tab,$statc,$statw,$txt,$a,$x,$warn,$crit,$free,$size);
 
 # check SNMP error code
 sub chk_err {
-	my $txt = shift;
+    my $txt = shift;
 
-	if ($sess->{ErrorNum} != 0) {
-		$np->nagios_die ("$txt: " . $sess->{ErrorStr});
-	}
+    if ($sess->{ErrorNum} != 0) {
+        $np->plugin_die ("$txt: " . $sess->{ErrorStr});
+    }
 }
 
 
 # convert into bytes
 sub to_bytes {
-	my $n = shift;
-	my $b = lc(shift);
+    my $n = shift;
+    my $b = lc(shift);
 
-	if ($b eq "kb") {
-		return (int($n * 1024));
-	} elsif ($b eq "mb") {
-		return (int($n * 1024 * 1024));
-	} elsif ($b eq "gb") {
-		return (int($n * 1024 * 1024 * 1024));
-	} elsif ($b eq "tb") {
-		return (int($n * 1024 * 1024 * 1024 * 1024));
-	} else {
-		return (0);
-	}
+    if ($b eq "kb") {
+        return (int($n * 1024));
+    } elsif ($b eq "mb") {
+        return (int($n * 1024 * 1024));
+    } elsif ($b eq "gb") {
+        return (int($n * 1024 * 1024 * 1024));
+    } elsif ($b eq "tb") {
+        return (int($n * 1024 * 1024 * 1024 * 1024));
+    } else {
+        return (0);
+    }
 }
 
 
 
 ### MAIN ###
-$np = Nagios::Plugin->new(
-	usage		=> "Usage: %s -H <host> -w <warning free space%%> -c <critical free space%%> [-t <timeout>]",
-	shortname	=> "QNAP Volumes",
-	version		=> VERSION,
-	timeout		=> 5,
-	url		=> "http://www.mgeiger.de/downloads.html",
-	blurb		=> "This plugin sends SNMP queries to a QNAP NAS and verifies the state\n" .
-			   "of all volumes (status, space free).",
+$np = Monitoring::Plugin->new(
+    usage       => "Usage: %s -H <host> -w <warning free space%%> -c <critical free space%%> [-t <timeout>]",
+    shortname   => "QNAP Volumes",
+    version     => VERSION,
+    timeout     => 5,
+    url         => "https://www.mgeiger.de/downloads.html",
+    blurb       => "This plugin sends SNMP queries to a QNAP NAS and verifies the state\n" .
+               "of all volumes (status, space free).",
 );
 
 # plugin arguments
 $np->add_arg(
-	spec		=> "host|H=s",
-	help		=> "ip address or hostname of the qnap device",
-	required	=> 1,
+    spec        => "host|H=s",
+    help        => "ip address or hostname of the qnap device",
+    required    => 1,
 );
 
 $np->add_arg(
-	spec		=> "warning|w=s",
-	label		=> "PERCENT%",
-	help		=> "free space in percent, when a WARNING is returned",
-	required	=> 1,
+    spec        => "warning|w=s",
+    label       => "PERCENT%",
+    help        => "free space in percent, when a WARNING is returned",
+    required    => 1,
 );
 
 $np->add_arg(
-	spec		=> "critical|c=s",
-	label		=> "PERCENT%",
-	help		=> "free space in percent, when a CRITICAL is returned",
-	required	=> 1,
+    spec        => "critical|c=s",
+    label       => "PERCENT%",
+    help        => "free space in percent, when a CRITICAL is returned",
+    required    => 1,
 );
 
 $np->getopts;
 
 if ($np->opts->warning =~ /^(\d+)%/) {
-	$warn = $1;
+    $warn = $1;
 } else {
-	$np->nagios_die ("warning value not a percentage (e.g. 15%)");
+    $np->plugin_die ("warning value not a percentage (e.g. 15%)");
 }
 
 if ($np->opts->critical =~ /^(\d+)%/) {
-	$crit = $1;
+    $crit = $1;
 } else {
-	$np->nagios_die ("critical value not a percentage (e.g. 15%)");
+    $np->plugin_die ("critical value not a percentage (e.g. 15%)");
 }
 
 
 # setup SNMP session
 $sess = new SNMP::Session(
-	DestHost	=> $np->opts->host,
-	Community	=> "public",
-	Version		=> 2,
-	Timeout		=> $np->opts->timeout * 1000000,
-	Retries		=> 2,
+    DestHost    => $np->opts->host,
+    Community   => "public",
+    Version     => 2,
+    Timeout     => $np->opts->timeout * 1000000,
+    Retries     => 2,
 );
 if (! defined($sess)) {
-	$np->nagios_die ("SNMP Session Setup");
+    $np->plugin_die ("SNMP Session Setup");
 }
 chk_err("Session Setup");
 
@@ -129,7 +128,7 @@ chk_err("Session Setup");
 $anz = $sess->get(QTREE . "16.0");
 chk_err("Get SysVolumeNumber");
 if (($anz !~ /^\d+$/) || ($anz <= 0) || ($anz > 20)) {
-	$np->nagios_die ("SysVolumeNumber: " . $anz);
+    $np->plugin_die ("SysVolumeNumber: " . $anz);
 }
 
 # bulk query on SystemVolumeTable
@@ -143,63 +142,63 @@ $statc = 0;
 $txt = "";
 for ($a = 1; $a <= $anz; $a++) {
 
-	# Status Text
-	if ($a > 1) {
-		$txt .= ", ";
-	}
-	$x = $tab[$anz * 1 + $a - 1];
-	$txt .= $x . ": ";
+    # Status Text
+    if ($a > 1) {
+        $txt .= ", ";
+    }
+    $x = $tab[$anz * 1 + $a - 1];
+    $txt .= $x . ": ";
 
-	# SysVolumeFreeSize
-	$x = $tab[$anz * 4 + $a - 1];
-	$txt .= $x . " / ";
-	if ($x =~ /^([0-9\.]+) ([kmgt]b)/i) {
-		$free = to_bytes($1,$2);
-	} else {
-		$np->nagios_die ("SysVolumeFreeSize: $x");
-	}
+    # SysVolumeFreeSize
+    $x = $tab[$anz * 4 + $a - 1];
+    $txt .= $x . " / ";
+    if ($x =~ /^([0-9\.]+) ([kmgt]b)/i) {
+        $free = to_bytes($1,$2);
+    } else {
+        $np->plugin_die ("SysVolumeFreeSize: $x");
+    }
 
-	# SysVolumeTotalSize
-	$x = $tab[$anz * 3 + $a - 1];
-	$txt .= $x;
-	if ($x =~ /^([0-9\.]+) ([kmgt]b)/i) {
-		$size = to_bytes($1,$2);
-	} else {
-		$np->nagios_die ("SysVolumeTotalSize: $x");
-	}
+    # SysVolumeTotalSize
+    $x = $tab[$anz * 3 + $a - 1];
+    $txt .= $x;
+    if ($x =~ /^([0-9\.]+) ([kmgt]b)/i) {
+        $size = to_bytes($1,$2);
+    } else {
+        $np->plugin_die ("SysVolumeTotalSize: $x");
+    }
 
-	# check free space
-	if (($free / $size) <= ($crit / 100)) {
-		$statc = 1;
-	} elsif (($free / $size) <= ($warn / 100)) {
-		$statw = 1;
-	}
+    # check free space
+    if (($free / $size) <= ($crit / 100)) {
+        $statc = 1;
+    } elsif (($free / $size) <= ($warn / 100)) {
+        $statw = 1;
+    }
 
-	# performance data
-	$np->add_perfdata(
-		label		=> "Volume " . $a,
-		value		=> $free,
-		uom		=> "B",
-		warning		=> int($warn / 100 * $size),
-		critical	=> int($crit / 100 * $size),
-	);
+    # performance data
+    $np->add_perfdata(
+        label       => "Volume " . $a,
+        value       => $free,
+        uom     => "B",
+        warning     => int($warn / 100 * $size),
+        critical    => int($crit / 100 * $size),
+    );
 
 
-	# SysVolumeStatus
-	$x = $tab[$anz * 5 + $a - 1];
-	if ($x !~ /^ready/i) {
-		$statc = 1;
-		$txt .= ", Volume " . $a . " Status: " . $x;
-	}
+    # SysVolumeStatus
+    $x = $tab[$anz * 5 + $a - 1];
+    if ($x !~ /^ready/i) {
+        $statc = 1;
+        $txt .= ", Volume " . $a . " Status: " . $x;
+    }
 }
 
 
 # Exit
 if ($statc) {
-	$np->nagios_exit (CRITICAL, $txt);
+    $np->plugin_exit (CRITICAL, $txt);
 } elsif ($statw) {
-	$np->nagios_exit (WARNING, $txt);
+    $np->plugin_exit (WARNING, $txt);
 } else {
-	$np->nagios_exit (OK, $txt);
+    $np->plugin_exit (OK, $txt);
 }
 
