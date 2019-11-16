@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# check_travis_status  v1.0, 08.07.2019
+# check_travis_status  v1.1, 15.11.2019
 # (c) Michael Geiger, info@mgeiger.de
 # updates on https://www.mgeiger.de/downloads.html
 #
@@ -24,6 +24,7 @@
 use strict;
 use Monitoring::Plugin;
 use LWP::UserAgent();
+use IO::Socket::SSL;
 
 use constant VERSION => "1.0";
 
@@ -70,6 +71,11 @@ info("GET Request: $url");
 $ua = LWP::UserAgent->new(
     timeout => $np->opts->timeout,
     agent   => 'check_travis_status',
+);
+
+$ua->ssl_opts(
+    SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_NONE,
+    verify_hostname => 0,
 );
 
 $res = $ua->get(
