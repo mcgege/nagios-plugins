@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# check_qnap_volumes  v1.3, 12.07.2019
+# check_qnap_volumes  v1.4, 26.11.2025
 # (c) Michael Geiger, info@mgeiger.de
 # updates on https://www.mgeiger.de/downloads.html
 #
@@ -27,7 +27,7 @@ use Monitoring::Plugin;
 use Monitoring::Plugin::Getopt;
 use SNMP;
 
-use constant VERSION => "1.3";
+use constant VERSION => "1.4";
 use constant QTREE =>".1.3.6.1.4.1.24681.1.2.";
 
 my ($np,$sess,$anz,@tab,$statc,$statw,$txt,$a,$x,$warn,$crit,$free,$size);
@@ -82,6 +82,12 @@ $np->add_arg(
 );
 
 $np->add_arg(
+    spec        => "community|C=s",
+    help        => "Optional community string for SNMP communication (default is \"public\")",
+    default     => "public",
+);
+
+$np->add_arg(
     spec        => "warning|w=s",
     label       => "PERCENT%",
     help        => "free space in percent, when a WARNING is returned",
@@ -113,7 +119,7 @@ if ($np->opts->critical =~ /^(\d+)%/) {
 # setup SNMP session
 $sess = new SNMP::Session(
     DestHost    => $np->opts->host,
-    Community   => "public",
+    Community   => $np->opts->community,
     Version     => 2,
     Timeout     => $np->opts->timeout * 1000000,
     Retries     => 2,
